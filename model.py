@@ -323,4 +323,4 @@ class Model(nn.Module):
         # uuu * item_num
         score = torch.mm(user_embedded, pos_item_embedded.t())
 
-        return 
+        return score
