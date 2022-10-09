@@ -9,10 +9,12 @@ from torch_cluster import random_walk
 import torch_sparse
 
 
+
+# instead of directly mask the node, we use the max pooling of its random walk to replace the its embedding
 class Model(nn.Module):
     def __init__(self, Data, opt, device):
         super(Model, self).__init__()
-        self.name = "CGI"
+        self.name = "Adversarial_final"
 
         self.interact_train = Data.interact_train.reset_index(drop=True)
 
@@ -33,17 +35,9 @@ class Model(nn.Module):
 
         self.create_sparse_adjaceny()
 
+        # self.edge_mask_learner = nn.Sequential(nn.Linear(2 * opt.embedding_size, opt.embedding_size), nn.ReLU(), nn.Linear(opt.embedding_size, 1))
         self.node_mask_learner = nn.ModuleList([nn.Sequential(nn.Linear(opt.embedding_size, opt.embedding_size), nn.ReLU(), nn.Linear(opt.embedding_size, 1)) for i in range(opt.L)])
         self.edge_mask_learner = nn.ModuleList([nn.Sequential(nn.Linear(2 * opt.embedding_size, opt.embedding_size), nn.ReLU(), nn.Linear(opt.embedding_size, 1)) for i in range(opt.L)])
-
-        self.init_emb()
-
-    def init_emb(self):
-        for m in self.modules():
-            if isinstance(m, Linear):
-                nn.init.xavier_uniform_(m.weight.data)
-				if m.bias is not None:
-					m.bias.data.fill_(0.0)
         
     def create_sparse_adjaceny(self):
         index = [self.interact_train['userid'].tolist(), self.interact_train['itemid'].tolist()]
@@ -127,11 +121,10 @@ class Model(nn.Module):
         cur_embedding_edge_drop =  torch.cat([self.user_Embedding.weight, self.item_Embedding.weight], dim=0)
         all_embeddings_edge_drop = [cur_embedding_edge_drop]
 
-        edge_reg = 0
+
         for i in range(self.L):
             edge_mask = edge_mask_list[i]
             new_edge = torch.mul(self.joint_adjaceny_matrix_normal.values(), edge_mask)
-            edge_reg += new_edge.sum()/len(self.interact_train)
 
 
             cur_embedding_edge_drop = torch_sparse.spmm(self.joint_adjaceny_matrix_normal.indices(), new_edge, self.user_num + self.item_num, self.user_num + self.item_num, cur_embedding_edge_drop)
@@ -141,15 +134,13 @@ class Model(nn.Module):
         all_embeddings_edge_drop = torch.mean(all_embeddings_edge_drop, dim=0, keepdim=False)
         user_embeddings_edge_drop, item_embeddings_edge_drop = torch.split(all_embeddings_edge_drop, [self.user_num,self.item_num])  
 
-        edge_reg = edge_reg / self.L
+
 
         # node_dropout_view#######################
         # user_num + item_num * embedding_size
         cur_embedding_node_drop = torch.cat([self.user_Embedding.weight, self.item_Embedding.weight], dim=0)
         all_embeddings_node_drop = [cur_embedding_node_drop]
 
-
-        node_reg = 0 
 
         for i in range(self.L):
             node_mask = node_mask_list[i]
@@ -160,9 +151,6 @@ class Model(nn.Module):
             cur_embedding_node_drop = torch.mm(self.joint_adjaceny_matrix_normal, cur_embedding_node_drop)
 
             all_embeddings_node_drop.append(cur_embedding_node_drop)
-
-            node_reg += node_reg.sum()/(self.user_num + self.item_num)
-
 
         all_embeddings_node_drop = torch.stack(all_embeddings_node_drop, dim=0)
         all_embeddings_node_drop = torch.mean(all_embeddings_node_drop, dim=0, keepdim=False)
@@ -241,7 +229,8 @@ class Model(nn.Module):
         score_user_node = ssl_compute(normalized_user_embedded_node_drop, normalized_user_embedded_unique)
         score_item_node = ssl_compute(normalized_item_embedded_node_drop, normalized_item_embedded_unique)
 
-        loss = self.rec_loss_reg * (rec_loss_edge_drop + rec_loss_node_drop) + rec_loss + self.ssl_loss_reg * (score_user_edge + score_item_edge + score_user_node + score_item_node) + 0.5 * (node_reg + edge_reg)
+        loss = self.rec_loss_reg * (rec_loss_edge_drop + rec_loss_node_drop) + rec_loss + self.ssl_loss_reg * (score_user_edge + score_item_edge + score_user_node + score_item_node)
+        # print(rec_loss, rec_loss_edge_drop, rec_loss_node_drop, score_user_edge+score_item_edge, score_user_node+score_item_node)
         return loss
 
 
@@ -334,6 +323,4 @@ class Model(nn.Module):
         # uuu * item_num
         score = torch.mm(user_embedded, pos_item_embedded.t())
 
-        return score
-
-
+        return 
