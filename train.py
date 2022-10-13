@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from collections import defaultdict
 
-from models import Model
+from model import Model
 import argparse
 
 import load_data
@@ -37,7 +37,7 @@ def get_config():
     parser.add_argument("--loadFilename", type=str, default=None)
 
     parser.add_argument("--batch_size", type=int, default=1024)
-    parser.add_argument("--epoch", type=int, default=1000)
+    parser.add_argument("--epoch", type=int, default=200)
 
     parser.add_argument("--embedding_size", type=int, default=64)
     parser.add_argument("--L", type=int, default=3)
@@ -47,6 +47,8 @@ def get_config():
     parser.add_argument("--rec_loss_reg", type=float, default=1)
     parser.add_argument("--ssl_loss_reg", type=float, default=0.02)
     parser.add_argument("--walk_length", type=int, default=10)
+    parser.add_argument("--sparse_reg", type=int, default=0.02)
+
 
 
     parser.add_argument("--lr", type=float, default=0.001)
@@ -130,9 +132,11 @@ def one_train(Data, opt):
     
     torch.save({
         'sd': model.state_dict(),
+        'opt': opt,
     }, 'model.tar')
         
 opt = get_config()
+interact_train, interact_test, social, user_num, item_num = load_data.data_load(opt.dataset_name, social_data=opt.social_data, test_dataset= True, bottom=opt.implcit_bottom)
 Data = load_data.Data(interact_train, interact_test, social, user_num, item_num)
 one_train(Data, opt)
 

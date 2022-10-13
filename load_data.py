@@ -47,6 +47,16 @@ class Data(object):
         self.__globalAverage()
 
         self.train_dataset = Train_dataset(self.interact_train, self.item_num, self.trainSet_u)
+        self.test_dataset = Test_dataset(self.testSet_u, self.item_num)
+
+        user_historical_mask = np.ones((user_num, item_num))
+        for uuu in self.trainSet_u.keys():
+            item_list = list(self.trainSet_u[uuu].keys())
+            if len(item_list) != 0:
+                user_historical_mask[uuu, item_list] = 0
+        
+
+        self.user_historical_mask = torch.from_numpy(user_historical_mask)
 
     def __generateSet(self):
         for row in self.interact_train.itertuples(index=False):
@@ -112,3 +122,93 @@ class Train_dataset(Dataset):
 
         return user, pos_item, neg_item
 
+
+class Test_dataset(Dataset):
+    def __init__(self, testSet_u, item_num):
+        super(Test_dataset, self).__init__()
+
+        self.testSet_u = testSet_u
+        self.user_list = list(testSet_u.keys())
+        self.item_num = item_num
+
+    def __len__(self):
+        return len(self.user_list)
+
+    def __getitem__(self, idx):
+        user = self.user_list[idx]
+        item_list = torch.tensor(list(self.testSet_u[user].keys()))
+        tensor = torch.zeros(self.item_num).scatter(0, item_list, 1)
+        return user, tensor
+
+
+def data_load(dataset_name, social_data= False, test_dataset= True, bottom=0, cv =None, split=None, user_fre_threshold = None, item_fre_threshold = None):
+    save_dir = "dataset/" + dataset_name
+    if not os.path.exists(save_dir):
+        print("dataset is not exist!!!!")
+        return None
+
+    social = None
+
+    if social_data == True:
+        social = pd.read_table(save_dir+"/trusts.txt", sep='\t', header= None, names= ['src', 'dst'])
+        social = social[['src', 'dst']]
+
+    if test_dataset == True:
+        interact_train = pd.read_pickle(save_dir + '/interact_train.pkl')
+        interact_test = pd.read_pickle(save_dir + '/interact_test.pkl')
+        if social_data == True:
+            social = pd.read_pickle(save_dir + '/social.pkl')
+        item_encoder_map = pd.read_csv(save_dir + '/item_encoder_map.csv')
+        item_num = len(item_encoder_map)
+        user_encoder_map = pd.read_csv(save_dir + '/user_encoder_map.csv')
+        user_num = len(user_encoder_map)
+
+        if bottom != None:
+            interact_train = interact_train[interact_train['score'] > bottom]
+            interact_test = interact_test[interact_test['score'] > bottom]
+
+        return interact_train, interact_test, social, user_num, item_num
+
+
+    interact = pd.read_table(save_dir+"/ratings.txt", sep='\t', header= None, names= ['userid', 'itemid', 'score'])
+
+    if user_fre_threshold != None and item_fre_threshold != None:
+        item_list = interact['itemid'].tolist()
+        user_list = interact['userid'].tolist()
+
+        item_counts = get_all_item_counts(interact, item_list)
+        user_counts = get_all_user_counts(interact, user_list)
+
+        interact = interact[(item_counts > item_fre_threshold) and (user_counts > user_fre_threshold)]
+
+
+    # label encoder
+    # encode IDs
+    user_encoder = LabelEncoder()
+    if social_data== True:
+        user_encoder.fit(pd.concat([interact['userid'],social['src'],social['dst']]))
+        interact['userid'] = user_encoder.transform(interact['userid'])
+        social['src'] = user_encoder.transform(social['src'])
+        social['dst'] = user_encoder.transform(social['dst'])
+    else:
+        user_encoder.fit(interact['userid'])
+        interact['userid'] = user_encoder.transform(interact['userid'])
+
+    item_encoder = LabelEncoder()
+    interact['itemid'] = item_encoder.fit_transform(interact['itemid'])
+
+    user_num = len(user_encoder.classes_)
+    item_num = len(item_encoder.classes_)
+
+    if bottom != None:
+        interact = interact[interact['score'] > bottom]
+
+
+    if cv != None:
+        kf = KFold(n_splits=cv)
+        split_iterator = kf.split(X)
+        return interact, split_iterator, social, user_num, item_num
+
+    if split != None:
+        interact_train, interact_test = train_test_split(interact, train_size=split, random_state=5)
+        return interact_train, interact_test, social, user_num, item_num

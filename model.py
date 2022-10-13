@@ -30,6 +30,7 @@ class Model(nn.Module):
         self.walk_length = opt.walk_length
         self.ssl_temp = opt.ssl_temp
         self.choosing_tmp = opt.choosing_tmp
+        self.sparse_reg = opt.sparse_reg
 
         self.create_sparse_adjaceny()
 
@@ -231,7 +232,7 @@ class Model(nn.Module):
         score_user_node = ssl_compute(normalized_user_embedded_node_drop, normalized_user_embedded_unique)
         score_item_node = ssl_compute(normalized_item_embedded_node_drop, normalized_item_embedded_unique)
 
-        loss = self.rec_loss_reg * (rec_loss_edge_drop + rec_loss_node_drop) + rec_loss + self.ssl_loss_reg * (score_user_edge + score_item_edge + score_user_node + score_item_node) + 0.5 * (node_reg + edge_reg)
+        loss = self.rec_loss_reg * (rec_loss_edge_drop + rec_loss_node_drop) + rec_loss + self.ssl_loss_reg * (score_user_edge + score_item_edge + score_user_node + score_item_node) + self.sparse_reg * (node_reg + edge_reg)
         return loss
 
 

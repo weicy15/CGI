@@ -10,9 +10,7 @@ from collections import defaultdict
 
 from model import Model
 
-from util import load_data
-from util import metric
-from util.early_stop import EarlyStopping
+import load_data
 
 import os
 import time
@@ -21,7 +19,7 @@ from tqdm import tqdm
 
 import random
 from rectorch.metrics import Metrics
-
+import argparse
 
 
 def ranking_meansure(pred_scores, ground_truth, k):
@@ -46,6 +44,7 @@ def my_collate_test(batch):
 
     return [user_id, pos_item]
 
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
@@ -54,6 +53,7 @@ loadFilename = "model.tar"
 checkpoint = torch.load(loadFilename, map_location=device)
 sd = checkpoint['sd']
 opt = checkpoint['opt']
+
 
 interact_train, interact_test, social, user_num, item_num = load_data.data_load(opt.dataset_name, social_data=opt.social_data, test_dataset= True, bottom=opt.implcit_bottom)
 Data = load_data.Data(interact_train, interact_test, social, user_num, item_num)
@@ -86,7 +86,7 @@ with tqdm(total=len(test_loader), desc="predicting") as pbar:
         ground_truth = pos_item.detach().numpy()
 
         for K in opt.K_list:
-            ndcg, recall, mrr = metric.ranking_meansure(score, ground_truth, K)
+            ndcg, recall, mrr = ranking_meansure(score, ground_truth, K)
             NDCG[K].append(ndcg)
             RECALL[K].append(recall)
 
